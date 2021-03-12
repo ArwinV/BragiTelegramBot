@@ -14,6 +14,7 @@ from escpos.printer import Serial
 import re
 from PIL import Image
 import time
+from datetime import datetime
 import unicodedata
 from unidecode import unidecode
 import json
@@ -203,7 +204,7 @@ def print_text(update: Update, context: CallbackContext) -> None:
     else:
         name = "Anonymous"
     logging.info("Message received: {}: {}".format(name, update.message.text))
-    p.text("Message from {}:\n{}\n".format(name, replace_emojis(update.message.text)))
+    p.text("{} - {}:\n{}\n".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), name, replace_emojis(update.message.text)))
     # Get urls in message and print qr codes for the urls
     urls = re.findall(URL_REGEX, update.message.text)
     for url in urls:
@@ -244,7 +245,7 @@ def print_photo(update: Update, context: CallbackContext) -> None:
     img = img.resize((512, hsize))
     img.save(image)
     # Print sender
-    p.text("Image from {}:\n".format(name))
+    p.text("{} - {}:\n".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), name))
     # Print image
     p.image(image)
     # Wait some time before continuing with the rest, the following two lines fixed all my image printing problems
@@ -277,7 +278,7 @@ def print_contact(update: Update, context: CallbackContext) -> None:
         name = "Anonymous"
     logging.info("Contact received from {}".format(name))
     # Print contact (I'm not sure why I implemented this)
-    p.text("Contact from {}\nName: {} {}\nTel: {}\n".format(name, update.message.contact.first_name, update.message.contact.last_name, update.message.contact.phone_number))
+    p.text("{} - {}\nName: {} {}\nTel: {}\n".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), name, update.message.contact.first_name, update.message.contact.last_name, update.message.contact.phone_number))
     # Cut and reply
     p.cut()
     update.message.reply_text("Contact printed")
@@ -305,7 +306,7 @@ def print_location(update: Update, context: CallbackContext) -> None:
         name = "Anonymous"
     logging.info("Location received from {}".format(name))
     # Print latitude and longitude
-    p.text("Location from {}\nLatitude: {}\nLongitude: {}\n".format(name, update.message.location.latitude, update.message.location.longitude))
+    p.text("{} - {}\nLatitude: {}\nLongitude: {}\n".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), name, update.message.location.latitude, update.message.location.longitude))
     # Cut and reply
     p.cut()
     update.message.reply_text("Location printed")
@@ -323,7 +324,7 @@ def print_poll(update: Update, context: CallbackContext) -> None:
         name = "Anonymous"
     logging.info("Poll received from {}".format(name))
     # Print question and answers
-    p.text("Poll from {}\nQuestion: {}\n".format(name, update.message.poll.question))
+    p.text("{} - {}:\nQuestion: {}\n".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), name, update.message.poll.question))
     p.set(align='left')
     for option in update.message.poll.options:
         p.text("    [] {}\n".format(option.text))
