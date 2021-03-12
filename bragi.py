@@ -107,6 +107,7 @@ def givepermission_command(update: Update, context: CallbackContext) -> None:
         if user['id'] == int(user_id):
             user['permission_to_print'] = True
             username = user['name']
+            context.bot.send_message(user['id'], "You now have permission to print :D")
             break;
     else:
         update.message.reply_text("User id not found")
@@ -124,6 +125,7 @@ def removepermission_command(update: Update, context: CallbackContext) -> None:
         if user['id'] == int(user_id):
             user['permission_to_print'] = False
             username = user['name']
+            context.bot.send_message(user['id'], "You no longer have permission to print...")
             break;
     else:
         update.message.reply_text("User id not found")
