@@ -309,6 +309,7 @@ def print_location(update: Update, context: CallbackContext) -> None:
     logging.info("Location received from {}".format(name))
     # Print latitude and longitude
     p.text("{} - {}\nLatitude: {}\nLongitude: {}\n".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), name, update.message.location.latitude, update.message.location.longitude))
+    p.qr("https://maps.google.com/?q={0:.14f},{1:.14f}".format(update.message.location.latitude, update.message.location.longitude), size=8)
     # Cut and reply
     p.cut()
     update.message.reply_text("Location printed")
