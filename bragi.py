@@ -141,7 +141,7 @@ def help_command(update: Update, context: CallbackContext) -> None:
         "- Images (non-animated stickers also work)\n"
         "- Contacts\n"
         "- Polls (although it doesn't print updates when someone votes)\n"
-        "- Location (prints the latitude and longitude)\n\n"
+        "- Location (prints the latitude and longitude and a qr code to google maps)\n\n"
         "Things the printer can't print:\n"
         "- Voice messages\n"
         "- Videos (including animated stickers)\n"
