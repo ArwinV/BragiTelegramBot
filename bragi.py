@@ -83,9 +83,10 @@ def start(update: Update, context: CallbackContext) -> None:
             'id': update.message.from_user.id,
             'permission_to_print': False,
             'anonymous': False})
+        data['last_user_id'] = update.message.from_user.id
         store_data()
     # Send message to admin to inform there is a pending permission request
-    context.bot.send_message(data['admin_id'], text="{} {} wants permission to print, grant it with \givepermission {}".format(update.message.from_user.first_name, update.message.from_user.last_name, update.message.from_user.id))
+    context.bot.send_message(data['admin_id'], text="{} {} wants permission to print, grant it with /givepermission {} (just sending /givepermission gives permission to the most recent request)".format(update.message.from_user.first_name, update.message.from_user.last_name, update.message.from_user.id))
 
 def listusers_command(update: Update, context: CallbackContext) -> None:
     """List users, their id and if they have permission to print"""
@@ -102,7 +103,13 @@ def givepermission_command(update: Update, context: CallbackContext) -> None:
     if not user_is_admin(update.message.from_user.id):
         update.message.reply_text("You are not allowed to use this command")
         return
-    user_id = update.message.text.split()[1]
+    # Check amount of arguments
+    arguments = update.message.text.split()
+    if len(arguments) == 1:
+        user_id = data['last_user_id']
+    else:
+        user_id = arguments[1]
+    # Loop through users
     for user in data['users']:
         if user['id'] == int(user_id):
             user['permission_to_print'] = True
@@ -358,6 +365,7 @@ def main():
         data['poll_prints'] = 0
         data['location_prints'] = 0
         data['users'] = []
+        data['last_user_id'] = 0
         try:
             with open("admin_id.txt") as admin_file:
                 admin_id = admin_file.read().strip()
