@@ -253,6 +253,9 @@ def print_photo(update: Update, context: CallbackContext) -> None:
     # Wait some time before continuing with the rest, the following two lines fixed all my image printing problems
     time.sleep(1)
     p.text("\n")
+    # Print caption
+    if update.message.caption != None:
+        p.text(update.message.caption)
     # Cut and reply
     p.cut()
     update.message.reply_text("Image printed!")
