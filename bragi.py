@@ -127,7 +127,12 @@ def removepermission_command(update: Update, context: CallbackContext) -> None:
     if not user_is_admin(update.message.from_user.id):
         update.message.reply_text("You are not allowed to use this command")
         return
-    user_id = update.message.text.split()[1]
+    # Check amount of arguments
+    arguments = update.message.text.split()
+    if len(arguments) == 1:
+        user_id = data['last_user_id']
+    else:
+        user_id = arguments[1]
     for user in data['users']:
         if user['id'] == int(user_id):
             user['permission_to_print'] = False
@@ -158,6 +163,11 @@ def help_command(update: Update, context: CallbackContext) -> None:
         "  /start - Prints hi and then this message\n"
         "  /stats - Prints stats about the printer\n"
         "  /anonymous - Check/Enable/Disable anonymous mode. In anonymous mode your name isn't printed above your message\n"))
+    if user_is_admin(update.message.from_user.id):
+        update.message.reply_text(("You are the admin, so you can also use:\n"
+        "  /listusers - Lists all users with their names, id and permission to print\n"
+        "  /givepermission [id] - Gives a user permission to print. When no id is given the last registered user gets permission to print\n"
+        "  /removepermission [id] - Revoke permission to print for a user. When no id is given the last registered user loses its permission to print.\n"))
 
 def stats_command(update: Update, context: CallbackContext) -> None:
     """Send stats"""
