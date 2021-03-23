@@ -53,19 +53,19 @@ def user_is_admin(user_id) -> bool:
     else:
         return False
 
-def user_may_print(user_id) -> bool:
-    """Check if user may print"""
+def user_info(telegram_user):
+    """Return username and permission to print"""
     for user in data['users']:
-        if user['id'] == user_id:
-            return user['permission_to_print']
-    return False
-
-def user_is_anonymous(user_id) -> bool:
-    """Check is user is anonymous"""
-    for user in data['users']:
-        if user['id'] == user_id:
-            return user['anonymous']
-    return False
+        if user['id'] == telegram_user.id:
+            # If username is changed, update the settings
+            if "{} {}".format(telegram_user.first_name, telegram_user.last_name) != user['name']:
+                user['name'] = "{} {}".format(telegram_user.first_name, telegram_user.last_name)
+                store_data()
+            # Return username and permission to print
+            if user['anonymous']:
+                return "Anonymous", user['permission_to_print']
+            else:
+                return user['name'], user['permission_to_print']
 
 def start(update: Update, context: CallbackContext) -> None:
     """Start the bot for a user"""
@@ -197,14 +197,11 @@ def replace_emojis(input_string):
 
 def print_text(update: Update, context: CallbackContext) -> None:
     """Print received text message"""
-    if not user_may_print(update.message.from_user.id):
+    name, permission_to_print = user_info(update.message.from_user)
+    if not permission_to_print:
         update.message.reply_text("You are not allowed to print, request permission with /start")
         return
     # Print message
-    if not user_is_anonymous(update.message.from_user.id):
-        name = "{} {}".format(update.message.from_user.first_name, update.message.from_user.last_name)
-    else:
-        name = "Anonymous"
     logging.info("Message received: {}: {}".format(name, update.message.text))
     p.text("{} - {}:\n{}\n".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), name, replace_emojis(update.message.text)))
     # Get urls in message and print qr codes for the urls
@@ -219,14 +216,10 @@ def print_text(update: Update, context: CallbackContext) -> None:
 
 def print_photo(update: Update, context: CallbackContext) -> None:
     """Print received image"""
-    if not user_may_print(update.message.from_user.id):
+    name, permission_to_print = user_info(update.message.from_user)
+    if not permission_to_print:
         update.message.reply_text("You are not allowed to print, request permission with /start")
         return
-    # Get name (or anonymous)
-    if not user_is_anonymous(update.message.from_user.id):
-        name = "{} {}".format(update.message.from_user.first_name, update.message.from_user.last_name)
-    else:
-        name = "Anonymous"
     logging.info("Image received from {}".format(name))
     # Get image from Telegram
     if update.message.document != None:
@@ -263,24 +256,19 @@ def print_photo(update: Update, context: CallbackContext) -> None:
 
 def print_audio(update: Update, context: CallbackContext) -> None:
     """Cannot print received audio"""
-    # Get name (or anonymous)
-    if not user_is_anonymous(update.message.from_user.id):
-        name = "{} {}".format(update.message.from_user.first_name, update.message.from_user.last_name)
-    else:
-        name = "Anonymous"
+    name, permission_to_print = user_info(update.message.from_user)
+    if not permission_to_print:
+        update.message.reply_text("You are not allowed to print, request permission with /start")
+        return
     logging.info("Audio received from {}".format(name))
     update.message.reply_text("Although the printer makes sound, my printer cannot make your sound...")
 
 def print_contact(update: Update, context: CallbackContext) -> None:
     """Print received contact"""
-    if not user_may_print(update.message.from_user.id):
+    name, permission_to_print = user_info(update.message.from_user)
+    if not permission_to_print:
         update.message.reply_text("You are not allowed to print, request permission with /start")
         return
-    # Get name (or anonymous)
-    if not user_is_anonymous(update.message.from_user.id):
-        name = "{} {}".format(update.message.from_user.first_name, update.message.from_user.last_name)
-    else:
-        name = "Anonymous"
     logging.info("Contact received from {}".format(name))
     # Print contact (I'm not sure why I implemented this)
     p.text("{} - {}\nName: {} {}\nTel: {}\n".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), name, update.message.contact.first_name, update.message.contact.last_name, update.message.contact.phone_number))
@@ -291,24 +279,19 @@ def print_contact(update: Update, context: CallbackContext) -> None:
 
 def print_document(update: Update, context: CallbackContext) -> None:
     """Don't print received document"""
-    # Get name (or anonymous)
-    if not user_is_anonymous(update.message.from_user.id):
-        name = "{} {}".format(update.message.from_user.first_name, update.message.from_user.last_name)
-    else:
-        name = "Anonymous"
+    name, permission_to_print = user_info(update.message.from_user)
+    if not permission_to_print:
+        update.message.reply_text("You are not allowed to print, request permission with /start")
+        return
     logging.info("Document received from {}".format(name))
     update.message.reply_text("How about no. Print your own documents!")
 
 def print_location(update: Update, context: CallbackContext) -> None:
     """Print received location"""
-    if not user_may_print(update.message.from_user.id):
+    name, permission_to_print = user_info(update.message.from_user)
+    if not permission_to_print:
         update.message.reply_text("You are not allowed to print, request permission with /start")
         return
-    # Get name (or anonymous)
-    if not user_is_anonymous(update.message.from_user.id):
-        name = "{} {}".format(update.message.from_user.first_name, update.message.from_user.last_name)
-    else:
-        name = "Anonymous"
     logging.info("Location received from {}".format(name))
     # Print latitude and longitude
     p.text("{} - {}\nLatitude: {}\nLongitude: {}\n".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), name, update.message.location.latitude, update.message.location.longitude))
@@ -320,14 +303,10 @@ def print_location(update: Update, context: CallbackContext) -> None:
 
 def print_poll(update: Update, context: CallbackContext) -> None:
     """Print received poll"""
-    if not user_may_print(update.message.from_user.id):
+    name, permission_to_print = user_info(update.message.from_user)
+    if not permission_to_print:
         update.message.reply_text("You are not allowed to print, request permission with /start")
         return
-    # Get name (or anonymous)
-    if not user_is_anonymous(update.message.from_user.id):
-        name = "{} {}".format(update.message.from_user.first_name, update.message.from_user.last_name)
-    else:
-        name = "Anonymous"
     logging.info("Poll received from {}".format(name))
     # Print question and answers
     p.text("{} - {}:\nQuestion: {}\n".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), name, update.message.poll.question))
@@ -342,11 +321,10 @@ def print_poll(update: Update, context: CallbackContext) -> None:
 
 def print_video(update: Update, context: CallbackContext) -> None:
     """Don't print received video"""
-    # Get name (or anonymous)
-    if not user_is_anonymous(update.message.from_user.id):
-        name = "{} {}".format(update.message.from_user.first_name, update.message.from_user.last_name)
-    else:
-        name = "Anonymous"
+    name, permission_to_print = user_info(update.message.from_user)
+    if not permission_to_print:
+        update.message.reply_text("You are not allowed to print, request permission with /start")
+        return
     logging.info("Video received from {}".format(name))
     # Reply
     update.message.reply_text("Video's cannot be printed smartass.")
