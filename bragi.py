@@ -350,7 +350,7 @@ def main():
     """Starting point"""
     # Printer object
     global p
-    p = Serial(devfile='/dev/ttyUSB2',
+    p = Serial(devfile='/dev/receipt_printer',
                baudrate=115200,
                bytesize=8,
                parity='N',
