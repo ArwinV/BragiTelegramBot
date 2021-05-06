@@ -20,7 +20,8 @@ from unidecode import unidecode
 import json
 
 # Enable logging
-logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
+logging.root.setLevel(logging.NOTSET)
+logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Url Regex
@@ -220,16 +221,21 @@ def print_text(update: Update, context: CallbackContext) -> None:
         return
     # Print message
     logging.info("Message received: {}: {}".format(name, update.message.text))
-    p.text("{} - {}:\n{}\n".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), name, replace_emojis(update.message.text)))
-    # Get urls in message and print qr codes for the urls
-    urls = re.findall(URL_REGEX, update.message.text)
-    for url in urls:
-        p.text("\n{}".format(url))
-        p.qr(url, size=8, center=True)
-    # Cut, reply and update stats
-    p.cut()
-    update.message.reply_text("Printed!")
-    update_stats('text')
+    try:
+        p.text("{} - {}:\n{}\n".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), name, replace_emojis(update.message.text)))
+        # Get urls in message and print qr codes for the urls
+        urls = re.findall(URL_REGEX, update.message.text)
+        for url in urls:
+            p.text("\n{}".format(url))
+            p.qr(url, size=8, center=True)
+        # Cut, reply and update stats
+        p.cut()
+        update.message.reply_text("Printed!")
+        update_stats('text')
+    except:
+        logging.error("Failed to print message")
+        update.message.reply_text("Failed printing your message :( Please try sending it again later.")
+        context.bot.send_message(data['admin_id'], text="Failed to print a text message from {}".format(name))
 
 def print_photo(update: Update, context: CallbackContext) -> None:
     """Print received image"""
@@ -257,19 +263,23 @@ def print_photo(update: Update, context: CallbackContext) -> None:
     img = img.resize((512, hsize))
     img.save(image)
     # Print sender
-    p.text("{} - {}:\n".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), name))
-    # Print image
-    p.image(image)
-    # Wait some time before continuing with the rest, the following two lines fixed all my image printing problems
-    time.sleep(1)
-    p.text("\n")
-    # Print caption
-    if update.message.caption != None:
-        p.text(update.message.caption)
-    # Cut and reply
-    p.cut()
-    update.message.reply_text("Image printed!")
-    update_stats('image')
+    try:
+        p.text("{} - {}:\n".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), name))
+        # Print image
+        p.image(image)
+        # Wait some time before continuing with the rest, the following two lines fixed all my image printing problems
+        time.sleep(1)
+        p.text("\n")
+        # Print caption
+        if update.message.caption != None:
+            p.text(update.message.caption)
+        # Cut and reply
+        p.cut()
+        update.message.reply_text("Image printed!")
+        update_stats('image')
+    except:
+        update.message.reply_text("Failed printing your photo :( Please try sending it again later.")
+        context.bot.send_message(data['admin_id'], text="Failed to print an image from {}".format(name))
 
 def print_audio(update: Update, context: CallbackContext) -> None:
     """Cannot print received audio"""
@@ -288,11 +298,15 @@ def print_contact(update: Update, context: CallbackContext) -> None:
         return
     logging.info("Contact received from {}".format(name))
     # Print contact (I'm not sure why I implemented this)
-    p.text("{} - {}\nName: {} {}\nTel: {}\n".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), name, update.message.contact.first_name, update.message.contact.last_name, update.message.contact.phone_number))
-    # Cut and reply
-    p.cut()
-    update.message.reply_text("Contact printed")
-    update_stats('contact')
+    try:
+        p.text("{} - {}\nName: {} {}\nTel: {}\n".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), name, update.message.contact.first_name, update.message.contact.last_name, update.message.contact.phone_number))
+        # Cut and reply
+        p.cut()
+        update.message.reply_text("Contact printed")
+        update_stats('contact')
+    except:
+        update.message.reply_text("Failed printing your contact :( Please try sending it again later.")
+        context.bot.send_message(data['admin_id'], text="Failed to print a contact from {}".format(name))
 
 def print_document(update: Update, context: CallbackContext) -> None:
     """Don't print received document"""
@@ -311,12 +325,16 @@ def print_location(update: Update, context: CallbackContext) -> None:
         return
     logging.info("Location received from {}".format(name))
     # Print latitude and longitude
-    p.text("{} - {}\nLatitude: {}\nLongitude: {}\n".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), name, update.message.location.latitude, update.message.location.longitude))
-    p.qr("https://maps.google.com/?q={0:.14f},{1:.14f}".format(update.message.location.latitude, update.message.location.longitude), size=8)
-    # Cut and reply
-    p.cut()
-    update.message.reply_text("Location printed")
-    update_stats('location')
+    try:
+        p.text("{} - {}\nLatitude: {}\nLongitude: {}\n".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), name, update.message.location.latitude, update.message.location.longitude))
+        p.qr("https://maps.google.com/?q={0:.14f},{1:.14f}".format(update.message.location.latitude, update.message.location.longitude), size=8)
+        # Cut and reply
+        p.cut()
+        update.message.reply_text("Location printed")
+        update_stats('location')
+    except:
+        update.message.reply_text("Failed printing your location :( Please try sending it again later.")
+        context.bot.send_message(data['admin_id'], text="Failed to print a location from {}".format(name))
 
 def print_poll(update: Update, context: CallbackContext) -> None:
     """Print received poll"""
@@ -326,15 +344,19 @@ def print_poll(update: Update, context: CallbackContext) -> None:
         return
     logging.info("Poll received from {}".format(name))
     # Print question and answers
-    p.text("{} - {}:\nQuestion: {}\n".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), name, update.message.poll.question))
-    p.set(align='left')
-    for option in update.message.poll.options:
-        p.text("    [] {}\n".format(option.text))
-    p.set(align='center')
-    # Cut and reply
-    p.cut()
-    update.message.reply_text("Poll printed")
-    update_stats('poll')
+    try:
+        p.text("{} - {}:\nQuestion: {}\n".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), name, update.message.poll.question))
+        p.set(align='left')
+        for option in update.message.poll.options:
+            p.text("    [] {}\n".format(option.text))
+        p.set(align='center')
+        # Cut and reply
+        p.cut()
+        update.message.reply_text("Poll printed")
+        update_stats('poll')
+    except:
+        update.message.reply_text("Failed printing your poll :( Please try sending it again later.")
+        context.bot.send_message(data['admin_id'], text="Failed to print a poll from {}".format(name))
 
 def print_video(update: Update, context: CallbackContext) -> None:
     """Don't print received video"""
