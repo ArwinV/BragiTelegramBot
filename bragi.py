@@ -45,12 +45,6 @@ def update_stats(printed_type) -> None:
         data['text_prints'] = data['text_prints'] + 1
     elif printed_type == 'image':
         data['image_prints'] = data['image_prints'] + 1
-    elif printed_type == 'contact':
-        data['contact_prints'] = data['contact_prints'] + 1
-    elif printed_type == 'poll':
-        data['poll_prints'] = data['poll_prints'] + 1
-    elif printed_type == 'location':
-        data['location_prints'] = data['location_prints'] + 1
     store_data()
 
 def user_is_admin(user_id) -> bool:
@@ -112,8 +106,8 @@ def is_spamming(telegram_user):
 
 async def start(update: Update, context: CallbackContext) -> None:
     """Start the bot for a user"""
-    await update.message.reply_text("Hi! This is Bragi the receipt printer. The bot is named after the skaldic god of poetry in Norse mythology. Here's some info about the bot:")
-    await help_command(update, context)
+    await update.message.reply_text("Hi! This is Bragi the receipt printer. The printer will print all text messages or photos that are sent to it. The bot is named after the skaldic god of poetry in Norse mythology. Type /help for more info.")
+    #await help_command(update, context)
     # Add user to list of users
     for user in data['users']:
         if user['id'] == update.message.from_user.id:
@@ -194,13 +188,7 @@ async def help_command(update: Update, context: CallbackContext) -> None:
         "Currently the following message types are supported:\n"
         "- Text (when sending emojis their discription is printed, like: [FLUSHED FACE] or [SNOWMAN WITHOUT SNOW]. When the text contains a url, a QR code is printed after the text message which points to the url.)\n"
         "- Images (non-animated stickers also work)\n"
-        "- Contacts\n"
-        "- Polls (although it doesn't print updates when someone votes)\n"
-        "- Location (prints the latitude and longitude and a qr code to google maps)\n\n"
-        "Things the printer can't print:\n"
-        "- Voice messages\n"
-        "- Videos (including animated stickers)\n"
-        "- Documents (I'm not printing your books or executables)\n\n"
+        "\n"
         "The bot supports the following commands:\n"
         "  /help - Prints this message\n"
         "  /start - Prints hi and then this message\n"
@@ -210,16 +198,15 @@ async def help_command(update: Update, context: CallbackContext) -> None:
         await update.message.reply_text(("You are the admin, so you can also use:\n"
         "  /listusers - Lists all users with their names, id and permission to print\n"
         "  /givepermission [id] - Gives a user permission to print. When no id is given the last registered user gets permission to print\n"
-        "  /removepermission [id] - Revoke permission to print for a user. When no id is given the last registered user loses its permission to print.\n"))
+        "  /removepermission [id] - Revoke permission to print for a user. When no id is given the last registered user loses its permission to print.\n"
+        "  /printqueue - Prints all messages in the queue\n"
+        "  /emptyqueue - Sets all received messages to printed\n"))
 
 async def stats_command(update: Update, context: CallbackContext) -> None:
     """Send stats"""
     await update.message.reply_text(("Total amount of messages printed: {}\n"
         "Text messages printed: {}\n"
-        "Images printed: {}\n"
-        "Contacts printed: {}\n"
-        "Polls printed: {}\n"
-        "Locations printed: {}\n").format(data['total_prints'], data['text_prints'], data['image_prints'], data['contact_prints'], data['poll_prints'], data['location_prints']))
+        "Images printed: {}\n").format(data['total_prints'], data['text_prints'], data['image_prints']))
 
 async def anonymous_command(update: Update, context: CallbackContext) -> None:
     """Set anonymous status"""
@@ -255,8 +242,8 @@ def replace_emojis(input_string):
                      return_string += "[x]"
     return return_string
 
-async def print_text(update: Update, context: CallbackContext) -> None:
-    """Print received text message"""
+async def get_text_message(update: Update, context: CallbackContext) -> None:
+    """Get and store received text message"""
     # Check if user exists
     if not user_exists(update.message.from_user):
         await update.message.reply_text("Please use the /start command before sending anything.")
@@ -272,13 +259,36 @@ async def print_text(update: Update, context: CallbackContext) -> None:
         return
     # Print message
     logging.info("Message received: {}: {}".format(name, update.message.text))
+    # Store message
+    message = {
+        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'sender': name,
+        'text': replace_emojis(update.message.text),
+        'image_path': None,
+        'printed': False,
+        }
+    # Print message
+    if print_text_message(message):
+        # Reply
+        await update.message.reply_text("Printed!")
+    else:
+        await error_printing(update, context, name)
+
+    # Add message to list
+    messages.append(message)
+    # Save messages to disk
+    with open('messages.json', 'w') as save_file:
+        json.dump(messages, save_file)
+
+def print_text_message(message):
+    """Prints a text message"""
     try:
         # Open serial interface
         p.open()
         # Print text
-        p.text("{} - {}:\n{}\n".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), name, replace_emojis(update.message.text)))
+        p.text("{} - {}:\n{}\n".format(message['timestamp'], message['sender'], message['text']))
         # Get urls in message and print qr codes for the urls
-        urls = re.findall(URL_REGEX, update.message.text)
+        urls = re.findall(URL_REGEX, message['text'])
         for url in urls:
             p.text("\n{}".format(url))
             p.qr(url, size=8, center=True)
@@ -286,14 +296,14 @@ async def print_text(update: Update, context: CallbackContext) -> None:
         p.cut()
         # Close interface
         p.close();
-        # Reply
-        await update.message.reply_text("Printed!")
+        # Update stats
         update_stats('text')
+        return True
     except:
-        await error_printing(update, context, name)
+        return False
 
-async def print_photo(update: Update, context: CallbackContext) -> None:
-    """Print received image"""
+async def get_photo_message(update: Update, context: CallbackContext) -> None:
+    """Get and store received image"""
     # Check if user exists
     if not user_exists(update.message.from_user):
         await update.message.reply_text("Please use the /start command before sending anything.")
@@ -320,38 +330,65 @@ async def print_photo(update: Update, context: CallbackContext) -> None:
     elif update.message.photo != None:
         imageFile = await context.bot.get_file(update.message.photo[-1].file_id)
     image = await imageFile.download_to_drive()
+    print(image)
     # Resize image to correct size (maximum width of 512 pixels)
     img = Image.open(image)
     wpercent = (512/float(img.size[0]))
     hsize = int((float(img.size[1])*float(wpercent)))
     img = img.resize((512, hsize))
     img.save(image)
-    # Print sender
+    # Get caption
+    caption = update.message.caption
+    # Replace emojis
+    if caption != None:
+        caption = replace_emojis(caption),
+    # Store message
+    message = {
+        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'sender': name,
+        'text': caption,
+        'image_path': str(image),
+        'printed': False,
+        }
+    # Print message
+    if print_photo_message(message):
+        # Reply
+        await update.message.reply_text("Printed!")
+    else:
+        await error_printing(update, context, name)
+    # Add message to list
+    messages.append(message)
+    # Save messages to disk
+    with open('messages.json', 'w') as save_file:
+        json.dump(messages, save_file)
+
+def print_photo_message(message):
+    """Prints message with photo"""
     try:
         # Open serial interface
         p.open()
         # Print text
-        p.text("{} - {}:\n".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), name))
+        p.text("{} - {}:\n".format(message['timestamp'], message['sender']))
         # Print image
-        p.image(image)
+        p.image(message['image_path'])
         # Wait some time before continuing with the rest, the following two lines fixed all my image printing problems
         time.sleep(1)
         p.text("\n")
         # Print caption
-        if update.message.caption != None:
-            p.text(update.message.caption)
+        if message['text'] != None:
+            p.text(message['text'])
         # Cut and reply
         p.cut()
         # Close interface
         p.close()
-        # Reply
-        await update.message.reply_text("Image printed!")
+        # Update stats
         update_stats('image')
+        return True
     except:
-        await error_printing(update, context, name)
+        return False
 
-async def print_audio(update: Update, context: CallbackContext) -> None:
-    """Cannot print received audio"""
+async def get_unsupported_message(update: Update, context: CallbackContext) -> None:
+    """ Reply that type is unsupported"""
     # Check if user exists
     if not user_exists(update.message.from_user):
         await update.message.reply_text("Please use the /start command before sending anything.")
@@ -365,146 +402,39 @@ async def print_audio(update: Update, context: CallbackContext) -> None:
     if not permission_to_print:
         await update.message.reply_text("You do not have permission to print anymore.")
         return
-    logging.info("Audio received from {}".format(name))
-    await update.message.reply_text("Although the printer makes sound, my printer cannot make your sound...")
-
-async def print_contact(update: Update, context: CallbackContext) -> None:
-    """Print received contact"""
-    # Check if user exists
-    if not user_exists(update.message.from_user):
-        await update.message.reply_text("Please use the /start command before sending anything.")
-        return
-    # Check if user is spamming
-    if is_spamming(update.message.from_user):
-        await update.message.reply_text("Please wait a few minutes before sending another message.")
-        return
-    # Get name and permission to print
-    name, permission_to_print = user_info(update.message.from_user)
-    if not permission_to_print:
-        await update.message.reply_text("You do not have permission to print anymore.")
-        return
-    logging.info("Contact received from {}".format(name))
-    # Print contact (I'm not sure why I implemented this)
-    try:
-        # Open serial interface
-        p.open()
-        # Print contact
-        p.text("{} - {}\nName: {} {}\nTel: {}\n".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), name, update.message.contact.first_name, update.message.contact.last_name, update.message.contact.phone_number))
-        # Cut and reply
-        p.cut()
-        # Close interface
-        p.close()
-        # Reply
-        await update.message.reply_text("Contact printed")
-        update_stats('contact')
-    except:
-        await error_printing(update, context, name)
-
-async def print_document(update: Update, context: CallbackContext) -> None:
-    """Don't print received document"""
-    # Check if user exists
-    if not user_exists(update.message.from_user):
-        await update.message.reply_text("Please use the /start command before sending anything.")
-        return
-    # Check if user is spamming
-    if is_spamming(update.message.from_user):
-        await update.message.reply_text("Please wait a few minutes before sending another message.")
-        return
-    # Get name and permission to print
-    name, permission_to_print = user_info(update.message.from_user)
-    if not permission_to_print:
-        await update.message.reply_text("You do not have permission to print anymore.")
-        return
-    logging.info("Document received from {}".format(name))
-    await update.message.reply_text("How about no. Print your own documents!")
-
-async def print_location(update: Update, context: CallbackContext) -> None:
-    """Print received location"""
-    # Check if user exists
-    if not user_exists(update.message.from_user):
-        await update.message.reply_text("Please use the /start command before sending anything.")
-        return
-    # Check if user is spamming
-    if is_spamming(update.message.from_user):
-        await update.message.reply_text("Please wait a few minutes before sending another message.")
-        return
-    # Get name and permission to print
-    name, permission_to_print = user_info(update.message.from_user)
-    if not permission_to_print:
-        await update.message.reply_text("You do not have permission to print anymore.")
-        return
-    logging.info("Location received from {}".format(name))
-    # Print latitude and longitude
-    try:
-        # Open serial interface
-        p.open()
-        # Print location
-        p.text("{} - {}\nLatitude: {}\nLongitude: {}\n".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), name, update.message.location.latitude, update.message.location.longitude))
-        p.qr("https://maps.google.com/?q={0:.14f},{1:.14f}".format(update.message.location.latitude, update.message.location.longitude), size=8)
-        # Cut and reply
-        p.cut()
-        # Close interface
-        p.close()
-        # Reply
-        await update.message.reply_text("Location printed")
-        update_stats('location')
-    except:
-        await error_printing(update, context, name)
-
-async def print_poll(update: Update, context: CallbackContext) -> None:
-    """Print received poll"""
-    # Check if user exists
-    if not user_exists(update.message.from_user):
-        await update.message.reply_text("Please use the /start command before sending anything.")
-        return
-    # Check if user is spamming
-    if is_spamming(update.message.from_user):
-        await update.message.reply_text("Please wait a few minutes before sending another message.")
-        return
-    # Get name and permission to print
-    name, permission_to_print = user_info(update.message.from_user)
-    if not permission_to_print:
-        await update.message.reply_text("You do not have permission to print anymore.")
-        return
-    logging.info("Poll received from {}".format(name))
-    # Print question and answers
-    try:
-        # Open serial interface
-        p.open()
-        # Print poll
-        p.text("{} - {}:\nQuestion: {}\n".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), name, update.message.poll.question))
-        p.set(align='left')
-        for option in update.message.poll.options:
-            p.text("    [] {}\n".format(option.text))
-        p.set(align='center')
-        # Cut and reply
-        p.cut()
-        # Close interface
-        p.close()
-        # Reply
-        await update.message.reply_text("Poll printed")
-        update_stats('poll')
-    except:
-        await error_printing(update, context, name)
-
-async def print_video(update: Update, context: CallbackContext) -> None:
-    """Don't print received video"""
-    # Check if user exists
-    if not user_exists(update.message.from_user):
-        await update.message.reply_text("Please use the /start command before sending anything.")
-        return
-    # Check if user is spamming
-    if is_spamming(update.message.from_user):
-        await update.message.reply_text("Please wait a few minutes before sending another message.")
-        return
-    # Get name and permission to print
-    name, permission_to_print = user_info(update.message.from_user)
-    if not permission_to_print:
-        await update.message.reply_text("You do not have permission to print anymore.")
-        return
-    logging.info("Video received from {}".format(name))
+    # Log
+    logging.info("Unsupported message received from {}".format(name))
     # Reply
-    await update.message.reply_text("Video's cannot be printed smartass.")
+    await update.message.reply_text("This type of message is unsupported. Try a text message or an image.")
+
+async def print_unprinted_messages(update: Update, context: CallbackContext):
+    # Check is user is admin
+    if not user_is_admin(update.message.from_user.id):
+        await update.message.reply_text("You are not allowed to use this command")
+        return
+    # Loop over messages
+    for message in messages:
+        if message['printed'] == False:
+            if message['image_path'] == None:
+                print_text_message(message)
+            else:
+                print_photo_message(message)
+                time.sleep(1)
+    await update.message.reply_text("All unprinted messages printed.")
+
+async def set_all_printed(update: Update, context: CallbackContext):
+    """Set all messages to printed"""
+    # Check is user is admin
+    if not user_is_admin(update.message.from_user.id):
+        await update.message.reply_text("You are not allowed to use this command")
+        return
+    # Loop over messages
+    for message in messages:
+        message['printed'] = True
+    # Save messages to disk
+    with open('messages.json', 'w') as save_file:
+        json.dump(messages, save_file)
+    await update.message.reply_text("Queue emptied")
 
 def main():
     """Starting point"""
@@ -550,6 +480,15 @@ def main():
         data['admin_id'] = int(admin_id)
         with open('saves.json', 'w') as save_file:
             json.dump(data, save_file)
+    # Load message list
+    global messages
+    try:
+        with open("messages.json") as save_file:
+            messages = json.load(save_file)
+    except FileNotFoundError:
+        logging.info("messages.json file not found. Creating empty list.")
+        messages = []
+
     # Start the bot
     TOKEN = None
     try:
@@ -570,19 +509,15 @@ def main():
     application.add_handler(CommandHandler("givepermission", givepermission_command))
     application.add_handler(CommandHandler("removepermission", removepermission_command))
     application.add_handler(CommandHandler("anonymous", anonymous_command))
-    # Handle all the message types! I might be able to OR some lines, but this also works
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, print_text))
-    application.add_handler(MessageHandler(filters.PHOTO, print_photo))
-    application.add_handler(MessageHandler(filters.Document.IMAGE, print_photo))
-    application.add_handler(MessageHandler(filters.AUDIO, print_audio))
-    application.add_handler(MessageHandler(filters.VOICE, print_audio))
-    application.add_handler(MessageHandler(filters.CONTACT, print_contact))
-    application.add_handler(MessageHandler(filters.Document.ALL & ~filters.Document.IMAGE & ~filters.Document.VIDEO, print_document))
-    application.add_handler(MessageHandler(filters.LOCATION, print_location))
-    application.add_handler(MessageHandler(filters.POLL, print_poll))
-    application.add_handler(MessageHandler(filters.Sticker.ALL, print_photo))
-    application.add_handler(MessageHandler(filters.VIDEO, print_video))
-    application.add_handler(MessageHandler(filters.Document.VIDEO, print_video))
+    application.add_handler(CommandHandler("printqueue", print_unprinted_messages))
+    application.add_handler(CommandHandler("emptyqueue", set_all_printed))
+    # Handle text messages and photos
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, get_text_message))
+    application.add_handler(MessageHandler(filters.PHOTO, get_photo_message))
+    application.add_handler(MessageHandler(filters.Document.IMAGE, get_photo_message))
+    application.add_handler(MessageHandler(filters.Sticker.ALL, get_photo_message))
+    # Send reply when sending unupported message
+    application.add_handler(MessageHandler(filters.ALL & ~filters.TEXT & ~filters.COMMAND & ~filters.PHOTO & ~filters.Document.IMAGE & ~filters.Sticker.ALL, get_unsupported_message))
 
     # Start polling
     application.run_polling()
