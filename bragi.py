@@ -74,12 +74,14 @@ def user_info(telegram_user):
                 return "Anonymous", user['permission_to_print']
             else:
                 return user['name'], user['permission_to_print']
+    else:
+        return "Unknown", False
 
 def start(update: Update, context: CallbackContext) -> None:
     """Start the bot for a user"""
     update.message.reply_text("Hi! This is Bragi the receipt printer. The bot is named after the skaldic god of poetry in Norse mythology. Here's some info about the bot:")
     help_command(update, context)
-    update.message.reply_text("You'll receive a message when you have gotten permission to print.")
+    #update.message.reply_text("You'll receive a message when you have gotten permission to print.")
     # Add user to list of users
     for user in data['users']:
         if user['id'] == update.message.from_user.id:
@@ -89,12 +91,13 @@ def start(update: Update, context: CallbackContext) -> None:
         data['users'].append({
             'name': "{} {}".format(update.message.from_user.first_name, update.message.from_user.last_name),
             'id': update.message.from_user.id,
-            'permission_to_print': False,
+            'permission_to_print': True, # Default permission to print for now, until there's misuse
             'anonymous': False})
         data['last_user_id'] = update.message.from_user.id
         store_data()
     # Send message to admin to inform there is a pending permission request
-    context.bot.send_message(data['admin_id'], text="{} {} wants permission to print, grant it with /givepermission {} (just sending /givepermission gives permission to the most recent request)".format(update.message.from_user.first_name, update.message.from_user.last_name, update.message.from_user.id))
+    #context.bot.send_message(data['admin_id'], text="{} {} wants permission to print, grant it with /givepermission {} (just sending /givepermission gives permission to the most recent request)".format(update.message.from_user.first_name, update.message.from_user.last_name, update.message.from_user.id))
+    context.bot.send_message(data['admin_id'], text="{} {} Started the bot. For now everyone has permission to print by default.".format(update.message.from_user.first_name, update.message.from_user.last_name, update.message.from_user.id))
 
 def listusers_command(update: Update, context: CallbackContext) -> None:
     """List users, their id and if they have permission to print"""
@@ -155,7 +158,7 @@ def removepermission_command(update: Update, context: CallbackContext) -> None:
 
 def help_command(update: Update, context: CallbackContext) -> None:
     """Send instructions"""
-    update.message.reply_text(("Everything sent to this bot will be printed on a thermal receipt printer. (Posiflex PP-8000B)\n\n"
+    update.message.reply_text(("Everything sent to this bot will be printed on a thermal receipt printer.* (Posiflex PP-8000B)\n\n"
         "Currently the following message types are supported:\n"
         "- Text (when sending emojis their discription is printed, like: [FLUSHED FACE] or [SNOWMAN WITHOUT SNOW]. When the text contains a url, a QR code is printed after the text message which points to the url.)\n"
         "- Images (non-animated stickers also work)\n"
@@ -170,7 +173,8 @@ def help_command(update: Update, context: CallbackContext) -> None:
         "  /help - Prints this message\n"
         "  /start - Prints hi and then this message\n"
         "  /stats - Prints stats about the printer\n"
-        "  /anonymous - Check/Enable/Disable anonymous mode. In anonymous mode your name isn't printed above your message\n"))
+        "  /anonymous - Check/Enable/Disable anonymous mode. In anonymous mode your name isn't printed above your message\n"
+        "\n* Unless the serial cable behaves funny. When this happens I have no way to reprint the message you sent so I will never see it or even know that you sent it, also you will never know that it wasn't printed.\n"))
     if user_is_admin(update.message.from_user.id):
         update.message.reply_text(("You are the admin, so you can also use:\n"
         "  /listusers - Lists all users with their names, id and permission to print\n"
@@ -224,11 +228,15 @@ def print_text(update: Update, context: CallbackContext) -> None:
     """Print received text message"""
     name, permission_to_print = user_info(update.message.from_user)
     if not permission_to_print:
-        update.message.reply_text("You are not allowed to print, request permission with /start")
+        #update.message.reply_text("You are not allowed to print, request permission with /start")
+        update.message.reply_text("Please use the /start command before sending anything. (I lost the user database sometime in the past because I'm an idiot.)")
         return
     # Print message
     logging.info("Message received: {}: {}".format(name, update.message.text))
     try:
+        # Open serial interface
+        p.open()
+        # Print text
         p.text("{} - {}:\n{}\n".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), name, replace_emojis(update.message.text)))
         # Get urls in message and print qr codes for the urls
         urls = re.findall(URL_REGEX, update.message.text)
@@ -237,6 +245,9 @@ def print_text(update: Update, context: CallbackContext) -> None:
             p.qr(url, size=8, center=True)
         # Cut, reply and update stats
         p.cut()
+        # Close interface
+        p.close()
+        # Reply
         update.message.reply_text("Printed!")
         update_stats('text')
     except:
@@ -246,7 +257,8 @@ def print_photo(update: Update, context: CallbackContext) -> None:
     """Print received image"""
     name, permission_to_print = user_info(update.message.from_user)
     if not permission_to_print:
-        update.message.reply_text("You are not allowed to print, request permission with /start")
+        #update.message.reply_text("You are not allowed to print, request permission with /start")
+        update.message.reply_text("Please use the /start command before sending anything. (I lost the user database sometime in the past because I'm an idiot.)")
         return
     logging.info("Image received from {}".format(name))
     # Get image from Telegram
@@ -269,6 +281,9 @@ def print_photo(update: Update, context: CallbackContext) -> None:
     img.save(image)
     # Print sender
     try:
+        # Open serial interface
+        p.open();
+        # Print text
         p.text("{} - {}:\n".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), name))
         # Print image
         p.image(image)
@@ -280,6 +295,9 @@ def print_photo(update: Update, context: CallbackContext) -> None:
             p.text(update.message.caption)
         # Cut and reply
         p.cut()
+        # Close interface
+        p.close();
+        # Reply
         update.message.reply_text("Image printed!")
         update_stats('image')
     except:
@@ -289,7 +307,8 @@ def print_audio(update: Update, context: CallbackContext) -> None:
     """Cannot print received audio"""
     name, permission_to_print = user_info(update.message.from_user)
     if not permission_to_print:
-        update.message.reply_text("You are not allowed to print, request permission with /start")
+        #update.message.reply_text("You are not allowed to print, request permission with /start")
+        update.message.reply_text("Please use the /start command before sending anything. (I lost the user database sometime in the past because I'm an idiot.)")
         return
     logging.info("Audio received from {}".format(name))
     update.message.reply_text("Although the printer makes sound, my printer cannot make your sound...")
@@ -298,14 +317,21 @@ def print_contact(update: Update, context: CallbackContext) -> None:
     """Print received contact"""
     name, permission_to_print = user_info(update.message.from_user)
     if not permission_to_print:
-        update.message.reply_text("You are not allowed to print, request permission with /start")
+        #update.message.reply_text("You are not allowed to print, request permission with /start")
+        update.message.reply_text("Please use the /start command before sending anything. (I lost the user database sometime in the past because I'm an idiot.)")
         return
     logging.info("Contact received from {}".format(name))
     # Print contact (I'm not sure why I implemented this)
     try:
+        # Open serial interface
+        p.open()
+        # Print contact
         p.text("{} - {}\nName: {} {}\nTel: {}\n".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), name, update.message.contact.first_name, update.message.contact.last_name, update.message.contact.phone_number))
         # Cut and reply
         p.cut()
+        # Close interface
+        p.close()
+        # Reply
         update.message.reply_text("Contact printed")
         update_stats('contact')
     except:
@@ -315,7 +341,8 @@ def print_document(update: Update, context: CallbackContext) -> None:
     """Don't print received document"""
     name, permission_to_print = user_info(update.message.from_user)
     if not permission_to_print:
-        update.message.reply_text("You are not allowed to print, request permission with /start")
+        #update.message.reply_text("You are not allowed to print, request permission with /start")
+        update.message.reply_text("Please use the /start command before sending anything. (I lost the user database sometime in the past because I'm an idiot.)")
         return
     logging.info("Document received from {}".format(name))
     update.message.reply_text("How about no. Print your own documents!")
@@ -324,15 +351,22 @@ def print_location(update: Update, context: CallbackContext) -> None:
     """Print received location"""
     name, permission_to_print = user_info(update.message.from_user)
     if not permission_to_print:
-        update.message.reply_text("You are not allowed to print, request permission with /start")
+        #update.message.reply_text("You are not allowed to print, request permission with /start")
+        update.message.reply_text("Please use the /start command before sending anything. (I lost the user database sometime in the past because I'm an idiot.)")
         return
     logging.info("Location received from {}".format(name))
     # Print latitude and longitude
     try:
+        # Open serial interface
+        p.open()
+        # Print location
         p.text("{} - {}\nLatitude: {}\nLongitude: {}\n".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), name, update.message.location.latitude, update.message.location.longitude))
         p.qr("https://maps.google.com/?q={0:.14f},{1:.14f}".format(update.message.location.latitude, update.message.location.longitude), size=8)
         # Cut and reply
         p.cut()
+        # Close interface
+        p.close()
+        # Reply
         update.message.reply_text("Location printed")
         update_stats('location')
     except:
@@ -342,11 +376,15 @@ def print_poll(update: Update, context: CallbackContext) -> None:
     """Print received poll"""
     name, permission_to_print = user_info(update.message.from_user)
     if not permission_to_print:
-        update.message.reply_text("You are not allowed to print, request permission with /start")
+        #update.message.reply_text("You are not allowed to print, request permission with /start")
+        update.message.reply_text("Please use the /start command before sending anything. (I lost the user database sometime in the past because I'm an idiot.)")
         return
     logging.info("Poll received from {}".format(name))
     # Print question and answers
     try:
+        # Open serial interface
+        p.open()
+        # Print poll
         p.text("{} - {}:\nQuestion: {}\n".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), name, update.message.poll.question))
         p.set(align='left')
         for option in update.message.poll.options:
@@ -354,6 +392,9 @@ def print_poll(update: Update, context: CallbackContext) -> None:
         p.set(align='center')
         # Cut and reply
         p.cut()
+        # Close interface
+        p.close()
+        # Reply
         update.message.reply_text("Poll printed")
         update_stats('poll')
     except:
@@ -363,7 +404,8 @@ def print_video(update: Update, context: CallbackContext) -> None:
     """Don't print received video"""
     name, permission_to_print = user_info(update.message.from_user)
     if not permission_to_print:
-        update.message.reply_text("You are not allowed to print, request permission with /start")
+        #update.message.reply_text("You are not allowed to print, request permission with /start")
+        update.message.reply_text("Please use the /start command before sending anything. (I lost the user database sometime in the past because I'm an idiot.)")
         return
     logging.info("Video received from {}".format(name))
     # Reply
@@ -373,7 +415,7 @@ def main():
     """Starting point"""
     # Printer object
     global p
-    p = Serial(devfile='/dev/receipt_printer',
+    p = Serial(devfile='/dev/ttyUSB0',
                baudrate=115200,
                bytesize=8,
                parity='N',
@@ -386,6 +428,8 @@ def main():
     # Print started message
     p.text("Bragi started!")
     p.cut()
+    # Close connection
+    p.close()
     # Load saves dict
     global data
     try:
