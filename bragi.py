@@ -19,6 +19,8 @@ import unicodedata
 from unidecode import unidecode
 import json
 import os
+import RPi.GPIO as GPIO
+import threading
 
 # Enable logging
 logging.root.setLevel(logging.NOTSET)
@@ -27,6 +29,29 @@ logger = logging.getLogger(__name__)
 
 # Url Regex
 URL_REGEX = r"""(?i)\b((?:https?:(?:/{1,3}|[a-z0-9%])|[a-z0-9.\-]+[.](?:com|net|org|edu|gov|mil|aero|asia|biz|cat|coop|info|int|jobs|mobi|museum|name|post|pro|tel|travel|xxx|ac|ad|ae|af|ag|ai|al|am|an|ao|aq|ar|as|at|au|aw|ax|az|ba|bb|bd|be|bf|bg|bh|bi|bj|bm|bn|bo|br|bs|bt|bv|bw|by|bz|ca|cc|cd|cf|cg|ch|ci|ck|cl|cm|cn|co|cr|cs|cu|cv|cx|cy|cz|dd|de|dj|dk|dm|do|dz|ec|ee|eg|eh|er|es|et|eu|fi|fj|fk|fm|fo|fr|ga|gb|gd|ge|gf|gg|gh|gi|gl|gm|gn|gp|gq|gr|gs|gt|gu|gw|gy|hk|hm|hn|hr|ht|hu|id|ie|il|im|in|io|iq|ir|is|it|je|jm|jo|jp|ke|kg|kh|ki|km|kn|kp|kr|kw|ky|kz|la|lb|lc|li|lk|lr|ls|lt|lu|lv|ly|ma|mc|md|me|mg|mh|mk|ml|mm|mn|mo|mp|mq|mr|ms|mt|mu|mv|mw|mx|my|mz|na|nc|ne|nf|ng|ni|nl|no|np|nr|nu|nz|om|pa|pe|pf|pg|ph|pk|pl|pm|pn|pr|ps|pt|pw|py|qa|re|ro|rs|ru|rw|sa|sb|sc|sd|se|sg|sh|si|sj|Ja|sk|sl|sm|sn|so|sr|ss|st|su|sv|sx|sy|sz|tc|td|tf|tg|th|tj|tk|tl|tm|tn|to|tp|tr|tt|tv|tw|tz|ua|ug|uk|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|yu|za|zm|zw)/)(?:[^\s()<>{}\[\]]+|\([^\s()]*?\([^\s()]+\)[^\s()]*?\)|\([^\s]+?\))+(?:\([^\s()]*?\([^\s()]+\)[^\s()]*?\)|\([^\s]+?\)|[^\s`!()\[\]{};:\'\".,<>?«»“”‘’])|(?:(?<!@)[a-z0-9]+(?:[.\-][a-z0-9]+)*[.](?:com|net|org|edu|gov|mil|aero|asia|biz|cat|coop|info|int|jobs|mobi|museum|name|post|pro|tel|travel|xxx|ac|ad|ae|af|ag|ai|al|am|an|ao|aq|ar|as|at|au|aw|ax|az|ba|bb|bd|be|bf|bg|bh|bi|bj|bm|bn|bo|br|bs|bt|bv|bw|by|bz|ca|cc|cd|cf|cg|ch|ci|ck|cl|cm|cn|co|cr|cs|cu|cv|cx|cy|cz|dd|de|dj|dk|dm|do|dz|ec|ee|eg|eh|er|es|et|eu|fi|fj|fk|fm|fo|fr|ga|gb|gd|ge|gf|gg|gh|gi|gl|gm|gn|gp|gq|gr|gs|gt|gu|gw|gy|hk|hm|hn|hr|ht|hu|id|ie|il|im|in|io|iq|ir|is|it|je|jm|jo|jp|ke|kg|kh|ki|km|kn|kp|kr|kw|ky|kz|la|lb|lc|li|lk|lr|ls|lt|lu|lv|ly|ma|mc|md|me|mg|mh|mk|ml|mm|mn|mo|mp|mq|mr|ms|mt|mu|mv|mw|mx|my|mz|na|nc|ne|nf|ng|ni|nl|no|np|nr|nu|nz|om|pa|pe|pf|pg|ph|pk|pl|pm|pn|pr|ps|pt|pw|py|qa|re|ro|rs|ru|rw|sa|sb|sc|sd|se|sg|sh|si|sj|Ja|sk|sl|sm|sn|so|sr|ss|st|su|sv|sx|sy|sz|tc|td|tf|tg|th|tj|tk|tl|tm|tn|to|tp|tr|tt|tv|tw|tz|ua|ug|uk|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|yu|za|zm|zw)\b/?(?!@)))"""
+
+def printqueue_button_callback(channel):
+    print_unprinted_messages()
+
+def start_blinking():
+    if not e.isSet():
+        t = threading.Thread(name='non-block', target=blink_led, args=(e,))
+        t.start()
+        t.join()
+        e.clear()
+
+def stop_blinking():
+    e.set()
+
+def blink_led(e):
+    """Blink led of button"""
+    while True:
+        GPIO.output(18, GPIO.HIGH)
+        time.sleep(1)
+        GPIO.output(18, GPIO.LOW)
+        time.sleep(1)
+        if e.is_set():
+            break
 
 async def error_printing(update: Update, context: CallbackContext, name) -> None:
     logging.error("Failed to print message")
@@ -279,6 +304,8 @@ async def get_text_message(update: Update, context: CallbackContext) -> None:
     # Save messages to disk
     with open('messages.json', 'w') as save_file:
         json.dump(messages, save_file)
+    # Start led
+    start_blinking()
 
 def print_text_message(message):
     """Prints a text message"""
@@ -361,6 +388,8 @@ async def get_photo_message(update: Update, context: CallbackContext) -> None:
     # Save messages to disk
     with open('messages.json', 'w') as save_file:
         json.dump(messages, save_file)
+    # Start led
+    start_blinking()
 
 def print_photo_message(message):
     """Prints message with photo"""
@@ -407,11 +436,15 @@ async def get_unsupported_message(update: Update, context: CallbackContext) -> N
     # Reply
     await update.message.reply_text("This type of message is unsupported. Try a text message or an image.")
 
-async def print_unprinted_messages(update: Update, context: CallbackContext):
+async def print_unprinted_messages_command(update: Update, context: CallbackContext):
     # Check is user is admin
     if not user_is_admin(update.message.from_user.id):
         await update.message.reply_text("You are not allowed to use this command")
         return
+    print_unprinted_messages()
+    await update.message.reply_text("All unprinted messages printed.")
+
+def print_unprinted_messages():
     # Loop over messages
     for message in messages:
         if message['printed'] == False:
@@ -420,21 +453,25 @@ async def print_unprinted_messages(update: Update, context: CallbackContext):
             else:
                 print_photo_message(message)
                 time.sleep(1)
-    await update.message.reply_text("All unprinted messages printed.")
 
-async def set_all_printed(update: Update, context: CallbackContext):
+async def set_all_printed_command(update: Update, context: CallbackContext):
     """Set all messages to printed"""
     # Check is user is admin
     if not user_is_admin(update.message.from_user.id):
         await update.message.reply_text("You are not allowed to use this command")
         return
+    set_all_printed()
+    await update.message.reply_text("Queue emptied")
+
+def set_all_printed():
     # Loop over messages
     for message in messages:
         message['printed'] = True
     # Save messages to disk
     with open('messages.json', 'w') as save_file:
         json.dump(messages, save_file)
-    await update.message.reply_text("Queue emptied")
+    # Stop blinking
+    stop_blinking()
 
 def main():
     """Starting point"""
@@ -498,6 +535,19 @@ def main():
         logging.error("No token file found. Add your token in a file called token.txt in the same directory as the bot.")
         return
     
+    # Initialize GPIO
+    # Print messages button
+    GPIO.setwarnings(False) # Ignore warning for now
+    GPIO.setmode(GPIO.BCM) # Use physical pin numbering
+    GPIO.setup(4, GPIO.IN, pull_up_down=GPIO.PUD_UP) 
+    GPIO.add_event_detect(4,GPIO.FALLING,callback=printqueue_button_callback) # Setup event on pin 10 rising edge
+    # LED in button
+    GPIO.setup(18, GPIO.OUT)
+
+    # Create event for thread
+    global e 
+    e = threading.Event()
+
     # Create application
     application = Application.builder().token(TOKEN).build()
 
@@ -509,8 +559,8 @@ def main():
     application.add_handler(CommandHandler("givepermission", givepermission_command))
     application.add_handler(CommandHandler("removepermission", removepermission_command))
     application.add_handler(CommandHandler("anonymous", anonymous_command))
-    application.add_handler(CommandHandler("printqueue", print_unprinted_messages))
-    application.add_handler(CommandHandler("emptyqueue", set_all_printed))
+    application.add_handler(CommandHandler("printqueue", print_unprinted_messages_command))
+    application.add_handler(CommandHandler("emptyqueue", set_all_printed_command))
     # Handle text messages and photos
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, get_text_message))
     application.add_handler(MessageHandler(filters.PHOTO, get_photo_message))
@@ -521,6 +571,9 @@ def main():
 
     # Start polling
     application.run_polling()
+
+    # Cleanup gpio
+    GPIO.cleanup()
 
 if __name__ == '__main__':
     main()
