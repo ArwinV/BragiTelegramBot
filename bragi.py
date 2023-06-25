@@ -27,20 +27,34 @@ logging.root.setLevel(logging.NOTSET)
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Setup GPIO for button
+# Setup GPIO for buttons
 GPIO.setwarnings(False) # Ignore warning for now
 GPIO.setmode(GPIO.BCM) # Use physical pin numbering
 GPIO.setup(4, GPIO.IN, pull_up_down=GPIO.PUD_UP) 
+GPIO.setup(24, GPIO.IN, pull_up_down=GPIO.PUD_UP) 
+GPIO.setup(25, GPIO.IN, pull_up_down=GPIO.PUD_UP) 
 # Setup gpio for LED
 GPIO.setup(18, GPIO.OUT)
 led_pwm = GPIO.PWM(18,1)
 led_pwm.start(0)
+printing = GPIO.input(25)
 
 # Url Regex
 URL_REGEX = r"""(?i)\b((?:https?:(?:/{1,3}|[a-z0-9%])|[a-z0-9.\-]+[.](?:com|net|org|edu|gov|mil|aero|asia|biz|cat|coop|info|int|jobs|mobi|museum|name|post|pro|tel|travel|xxx|ac|ad|ae|af|ag|ai|al|am|an|ao|aq|ar|as|at|au|aw|ax|az|ba|bb|bd|be|bf|bg|bh|bi|bj|bm|bn|bo|br|bs|bt|bv|bw|by|bz|ca|cc|cd|cf|cg|ch|ci|ck|cl|cm|cn|co|cr|cs|cu|cv|cx|cy|cz|dd|de|dj|dk|dm|do|dz|ec|ee|eg|eh|er|es|et|eu|fi|fj|fk|fm|fo|fr|ga|gb|gd|ge|gf|gg|gh|gi|gl|gm|gn|gp|gq|gr|gs|gt|gu|gw|gy|hk|hm|hn|hr|ht|hu|id|ie|il|im|in|io|iq|ir|is|it|je|jm|jo|jp|ke|kg|kh|ki|km|kn|kp|kr|kw|ky|kz|la|lb|lc|li|lk|lr|ls|lt|lu|lv|ly|ma|mc|md|me|mg|mh|mk|ml|mm|mn|mo|mp|mq|mr|ms|mt|mu|mv|mw|mx|my|mz|na|nc|ne|nf|ng|ni|nl|no|np|nr|nu|nz|om|pa|pe|pf|pg|ph|pk|pl|pm|pn|pr|ps|pt|pw|py|qa|re|ro|rs|ru|rw|sa|sb|sc|sd|se|sg|sh|si|sj|Ja|sk|sl|sm|sn|so|sr|ss|st|su|sv|sx|sy|sz|tc|td|tf|tg|th|tj|tk|tl|tm|tn|to|tp|tr|tt|tv|tw|tz|ua|ug|uk|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|yu|za|zm|zw)/)(?:[^\s()<>{}\[\]]+|\([^\s()]*?\([^\s()]+\)[^\s()]*?\)|\([^\s]+?\))+(?:\([^\s()]*?\([^\s()]+\)[^\s()]*?\)|\([^\s]+?\)|[^\s`!()\[\]{};:\'\".,<>?«»“”‘’])|(?:(?<!@)[a-z0-9]+(?:[.\-][a-z0-9]+)*[.](?:com|net|org|edu|gov|mil|aero|asia|biz|cat|coop|info|int|jobs|mobi|museum|name|post|pro|tel|travel|xxx|ac|ad|ae|af|ag|ai|al|am|an|ao|aq|ar|as|at|au|aw|ax|az|ba|bb|bd|be|bf|bg|bh|bi|bj|bm|bn|bo|br|bs|bt|bv|bw|by|bz|ca|cc|cd|cf|cg|ch|ci|ck|cl|cm|cn|co|cr|cs|cu|cv|cx|cy|cz|dd|de|dj|dk|dm|do|dz|ec|ee|eg|eh|er|es|et|eu|fi|fj|fk|fm|fo|fr|ga|gb|gd|ge|gf|gg|gh|gi|gl|gm|gn|gp|gq|gr|gs|gt|gu|gw|gy|hk|hm|hn|hr|ht|hu|id|ie|il|im|in|io|iq|ir|is|it|je|jm|jo|jp|ke|kg|kh|ki|km|kn|kp|kr|kw|ky|kz|la|lb|lc|li|lk|lr|ls|lt|lu|lv|ly|ma|mc|md|me|mg|mh|mk|ml|mm|mn|mo|mp|mq|mr|ms|mt|mu|mv|mw|mx|my|mz|na|nc|ne|nf|ng|ni|nl|no|np|nr|nu|nz|om|pa|pe|pf|pg|ph|pk|pl|pm|pn|pr|ps|pt|pw|py|qa|re|ro|rs|ru|rw|sa|sb|sc|sd|se|sg|sh|si|sj|Ja|sk|sl|sm|sn|so|sr|ss|st|su|sv|sx|sy|sz|tc|td|tf|tg|th|tj|tk|tl|tm|tn|to|tp|tr|tt|tv|tw|tz|ua|ug|uk|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|yu|za|zm|zw)\b/?(?!@)))"""
 
 def printqueue_button_callback(channel):
     print_unprinted_messages()
+
+def clearqueue_button_callback(channel):
+    set_all_printed()
+
+def print_toggle_callback(channel):
+    global printing
+    printing = GPIO.input(25)
+    if printing:
+        logging.info("Immediate printing enabled")
+    else:
+        logging.info("Immediate printing disabled")
 
 def start_blinking():
     led_pwm.ChangeDutyCycle(50)
@@ -290,12 +304,14 @@ async def get_text_message(update: Update, context: CallbackContext) -> None:
         'printed': False,
         }
     # Print message
-    if print_text_message(message):
-        # Reply
-        await update.message.reply_text("Printed!")
+    if printing:
+        if print_text_message(message):
+            # Reply
+            await update.message.reply_text("Printed!")
+        else:
+            await error_printing(update, context, name)
     else:
-        await error_printing(update, context, name)
-
+        await update.message.reply_text("Message will soon be printed!")
     # Add message to list
     messages.append(message)
     # Save messages to disk
@@ -311,6 +327,7 @@ def print_text_message(message):
         p.open()
         # Print text
         p.text("{} - {}:\n{}\n".format(message['timestamp'], message['sender'], message['text']))
+        #p.text("{} - {}:\n{}\n".format(message['timestamp'], "awv61", message['text'])) # ONLY FOR VIDEO
         # Get urls in message and print qr codes for the urls
         urls = re.findall(URL_REGEX, message['text'])
         for url in urls:
@@ -375,11 +392,14 @@ async def get_photo_message(update: Update, context: CallbackContext) -> None:
         'printed': False,
         }
     # Print message
-    if print_photo_message(message):
-        # Reply
-        await update.message.reply_text("Printed!")
+    if printing:
+        if print_photo_message(message):
+            # Reply
+            await update.message.reply_text("Printed!")
+        else:
+            await error_printing(update, context, name)
     else:
-        await error_printing(update, context, name)
+        await update.message.reply_text("Message will soon be printed!")
     # Add message to list
     messages.append(message)
     # Save messages to disk
@@ -395,6 +415,7 @@ def print_photo_message(message):
         p.open()
         # Print text
         p.text("{} - {}:\n".format(message['timestamp'], message['sender']))
+        #p.text("{} - {}:\n".format(message['timestamp'], "awv61"))
         # Print image
         p.image(message['image_path'])
         # Wait some time before continuing with the rest, the following two lines fixed all my image printing problems
@@ -442,6 +463,7 @@ async def print_unprinted_messages_command(update: Update, context: CallbackCont
     await update.message.reply_text("All unprinted messages printed.")
 
 def print_unprinted_messages():
+    logging.info("Printing all unprinted messages")
     # Loop over messages
     for message in messages:
         if message['printed'] == False:
@@ -461,6 +483,7 @@ async def set_all_printed_command(update: Update, context: CallbackContext):
     await update.message.reply_text("Queue emptied")
 
 def set_all_printed():
+    logging.info("Clear unprinted messages")
     # Loop over messages
     for message in messages:
         message['printed'] = True
@@ -534,6 +557,14 @@ def main():
     
     # Set callback for button press
     GPIO.add_event_detect(4,GPIO.FALLING,callback=printqueue_button_callback)
+    GPIO.add_event_detect(24,GPIO.FALLING,callback=clearqueue_button_callback)
+    GPIO.add_event_detect(25,GPIO.BOTH,callback=print_toggle_callback)
+
+    # Printing toggle state
+    if printing:
+        logging.info("Immediate printing enabled")
+    else:
+        logging.info("Immediate printing disabled")
 
     # Create application
     application = Application.builder().token(TOKEN).build()
