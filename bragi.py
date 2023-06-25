@@ -27,6 +27,15 @@ logging.root.setLevel(logging.NOTSET)
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Setup GPIO for button
+GPIO.setwarnings(False) # Ignore warning for now
+GPIO.setmode(GPIO.BCM) # Use physical pin numbering
+GPIO.setup(4, GPIO.IN, pull_up_down=GPIO.PUD_UP) 
+# Setup gpio for LED
+GPIO.setup(18, GPIO.OUT)
+led_pwm = GPIO.PWM(18,1)
+led_pwm.start(0)
+
 # Url Regex
 URL_REGEX = r"""(?i)\b((?:https?:(?:/{1,3}|[a-z0-9%])|[a-z0-9.\-]+[.](?:com|net|org|edu|gov|mil|aero|asia|biz|cat|coop|info|int|jobs|mobi|museum|name|post|pro|tel|travel|xxx|ac|ad|ae|af|ag|ai|al|am|an|ao|aq|ar|as|at|au|aw|ax|az|ba|bb|bd|be|bf|bg|bh|bi|bj|bm|bn|bo|br|bs|bt|bv|bw|by|bz|ca|cc|cd|cf|cg|ch|ci|ck|cl|cm|cn|co|cr|cs|cu|cv|cx|cy|cz|dd|de|dj|dk|dm|do|dz|ec|ee|eg|eh|er|es|et|eu|fi|fj|fk|fm|fo|fr|ga|gb|gd|ge|gf|gg|gh|gi|gl|gm|gn|gp|gq|gr|gs|gt|gu|gw|gy|hk|hm|hn|hr|ht|hu|id|ie|il|im|in|io|iq|ir|is|it|je|jm|jo|jp|ke|kg|kh|ki|km|kn|kp|kr|kw|ky|kz|la|lb|lc|li|lk|lr|ls|lt|lu|lv|ly|ma|mc|md|me|mg|mh|mk|ml|mm|mn|mo|mp|mq|mr|ms|mt|mu|mv|mw|mx|my|mz|na|nc|ne|nf|ng|ni|nl|no|np|nr|nu|nz|om|pa|pe|pf|pg|ph|pk|pl|pm|pn|pr|ps|pt|pw|py|qa|re|ro|rs|ru|rw|sa|sb|sc|sd|se|sg|sh|si|sj|Ja|sk|sl|sm|sn|so|sr|ss|st|su|sv|sx|sy|sz|tc|td|tf|tg|th|tj|tk|tl|tm|tn|to|tp|tr|tt|tv|tw|tz|ua|ug|uk|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|yu|za|zm|zw)/)(?:[^\s()<>{}\[\]]+|\([^\s()]*?\([^\s()]+\)[^\s()]*?\)|\([^\s]+?\))+(?:\([^\s()]*?\([^\s()]+\)[^\s()]*?\)|\([^\s]+?\)|[^\s`!()\[\]{};:\'\".,<>?«»“”‘’])|(?:(?<!@)[a-z0-9]+(?:[.\-][a-z0-9]+)*[.](?:com|net|org|edu|gov|mil|aero|asia|biz|cat|coop|info|int|jobs|mobi|museum|name|post|pro|tel|travel|xxx|ac|ad|ae|af|ag|ai|al|am|an|ao|aq|ar|as|at|au|aw|ax|az|ba|bb|bd|be|bf|bg|bh|bi|bj|bm|bn|bo|br|bs|bt|bv|bw|by|bz|ca|cc|cd|cf|cg|ch|ci|ck|cl|cm|cn|co|cr|cs|cu|cv|cx|cy|cz|dd|de|dj|dk|dm|do|dz|ec|ee|eg|eh|er|es|et|eu|fi|fj|fk|fm|fo|fr|ga|gb|gd|ge|gf|gg|gh|gi|gl|gm|gn|gp|gq|gr|gs|gt|gu|gw|gy|hk|hm|hn|hr|ht|hu|id|ie|il|im|in|io|iq|ir|is|it|je|jm|jo|jp|ke|kg|kh|ki|km|kn|kp|kr|kw|ky|kz|la|lb|lc|li|lk|lr|ls|lt|lu|lv|ly|ma|mc|md|me|mg|mh|mk|ml|mm|mn|mo|mp|mq|mr|ms|mt|mu|mv|mw|mx|my|mz|na|nc|ne|nf|ng|ni|nl|no|np|nr|nu|nz|om|pa|pe|pf|pg|ph|pk|pl|pm|pn|pr|ps|pt|pw|py|qa|re|ro|rs|ru|rw|sa|sb|sc|sd|se|sg|sh|si|sj|Ja|sk|sl|sm|sn|so|sr|ss|st|su|sv|sx|sy|sz|tc|td|tf|tg|th|tj|tk|tl|tm|tn|to|tp|tr|tt|tv|tw|tz|ua|ug|uk|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|yu|za|zm|zw)\b/?(?!@)))"""
 
@@ -34,24 +43,10 @@ def printqueue_button_callback(channel):
     print_unprinted_messages()
 
 def start_blinking():
-    if not e.isSet():
-        t = threading.Thread(name='non-block', target=blink_led, args=(e,))
-        t.start()
-        t.join()
-        e.clear()
+    led_pwm.ChangeDutyCycle(50)
 
 def stop_blinking():
-    e.set()
-
-def blink_led(e):
-    """Blink led of button"""
-    while True:
-        GPIO.output(18, GPIO.HIGH)
-        time.sleep(1)
-        GPIO.output(18, GPIO.LOW)
-        time.sleep(1)
-        if e.is_set():
-            break
+    led_pwm.ChangeDutyCycle(0)
 
 async def error_printing(update: Update, context: CallbackContext, name) -> None:
     logging.error("Failed to print message")
@@ -113,6 +108,8 @@ def has_permission_to_print(telegram_user):
 
 def is_spamming(telegram_user):
     """Returns if user is spamming"""
+    if user_is_admin(telegram_user.id):
+        return False
     for user in data['users']:
         if user['id'] == telegram_user.id:
             if (datetime.now() - datetime.fromisoformat(user['last_message'])) < timedelta(minutes=5):
@@ -535,18 +532,8 @@ def main():
         logging.error("No token file found. Add your token in a file called token.txt in the same directory as the bot.")
         return
     
-    # Initialize GPIO
-    # Print messages button
-    GPIO.setwarnings(False) # Ignore warning for now
-    GPIO.setmode(GPIO.BCM) # Use physical pin numbering
-    GPIO.setup(4, GPIO.IN, pull_up_down=GPIO.PUD_UP) 
-    GPIO.add_event_detect(4,GPIO.FALLING,callback=printqueue_button_callback) # Setup event on pin 10 rising edge
-    # LED in button
-    GPIO.setup(18, GPIO.OUT)
-
-    # Create event for thread
-    global e 
-    e = threading.Event()
+    # Set callback for button press
+    GPIO.add_event_detect(4,GPIO.FALLING,callback=printqueue_button_callback)
 
     # Create application
     application = Application.builder().token(TOKEN).build()
